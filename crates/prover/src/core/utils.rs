@@ -2,7 +2,7 @@ use std::iter::Peekable;
 
 use num_traits::{One, Zero};
 
-use super::fields::m31::BaseField;
+use super::fields::m31::{BaseField, M31};
 use super::fields::qm31::SecureField;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
@@ -98,6 +98,22 @@ pub fn shifted_secure_combination(
         .iter()
         .fold(BaseField::zero(), |acc, &value| acc * alpha + value);
     res - z
+}
+
+pub fn bws_num_to_bytes(v: M31) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    let mut v = v.0;
+    while v > 0 {
+        bytes.push((v & 0xff) as u8);
+        v >>= 8;
+    }
+
+    if bytes.last().is_some() && bytes.last().unwrap() & 0x80 != 0 {
+        bytes.push(0);
+    }
+
+    bytes
 }
 
 #[cfg(test)]

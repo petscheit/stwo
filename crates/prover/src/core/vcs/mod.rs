@@ -9,3 +9,6 @@ pub mod ops;
 pub mod prover;
 mod utils;
 pub mod verifier;
+
+pub mod bws_sha256_hash;
+pub mod bws_sha256_merkle;
