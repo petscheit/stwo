@@ -1,8 +1,10 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+use num_traits::One;
+
 use super::fields::m31::{BaseField, M31};
 use super::fields::qm31::SecureField;
-use super::fields::{ComplexConjugate, ExtensionOf, Field};
+use super::fields::{ComplexConjugate, ExtensionOf, Field, FieldExpOps};
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
 use crate::math::utils::egcd;
@@ -168,6 +170,19 @@ impl CirclePoint<SecureField> {
                 }
             }
         }
+    }
+
+    pub fn bws_get_random_point<C: Channel>(channel: &mut C) -> Self {
+        let t = channel.draw_felt();
+
+        let one_plus_tsquared_inv = t.square().add(SecureField::one()).inverse();
+
+        let x = SecureField::one()
+            .add(t.square().neg())
+            .mul(one_plus_tsquared_inv);
+        let y = t.double().mul(one_plus_tsquared_inv);
+
+        Self { x, y }
     }
 }
 

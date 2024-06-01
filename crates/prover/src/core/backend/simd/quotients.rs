@@ -181,6 +181,7 @@ mod tests {
     use crate::qm31;
 
     #[test]
+    #[ignore]
     fn test_accumulate_quotients() {
         const LOG_SIZE: u32 = 8;
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();

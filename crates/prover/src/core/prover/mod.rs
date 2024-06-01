@@ -30,10 +30,10 @@ type Channel = BWSSha256Channel;
 type ChannelHasher = BWSSha256Hasher;
 type MerkleHasher = BWSSha256MerkleHasher;
 
-pub const LOG_BLOWUP_FACTOR: u32 = 1;
+pub const LOG_BLOWUP_FACTOR: u32 = 5;
 pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
-pub const PROOF_OF_WORK_BITS: u32 = 12;
-pub const N_QUERIES: usize = 3;
+pub const PROOF_OF_WORK_BITS: u32 = 0;
+pub const N_QUERIES: usize = 5;
 
 #[derive(Debug)]
 pub struct StarkProof {
@@ -93,7 +93,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     span.exit();
 
     // Draw OODS point.
-    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+    let oods_point = CirclePoint::<SecureField>::bws_get_random_point(channel);
 
     // Get mask sample points relative to oods point.
     let sample_points = air.mask_points(oods_point);
@@ -179,7 +179,7 @@ pub fn verify(
     );
 
     // Draw OODS point.
-    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+    let oods_point = CirclePoint::<SecureField>::bws_get_random_point(channel);
 
     // Get mask sample points relative to oods point.
     let trace_sample_points = air.mask_points(oods_point);
