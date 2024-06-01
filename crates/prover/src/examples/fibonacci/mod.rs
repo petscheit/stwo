@@ -5,13 +5,13 @@ use num_traits::One;
 use self::air::{FibonacciAir, MultiFibonacciAir};
 use self::component::FibonacciComponent;
 use crate::core::backend::cpu::CpuCircleEvaluation;
-use crate::core::channel::{Blake2sChannel, Channel};
+use crate::core::channel::{BWSSha256Channel, Channel};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
-use crate::core::vcs::blake2_hash::Blake2sHasher;
+use crate::core::vcs::bws_sha256_hash::BWSSha256Hasher;
 use crate::core::vcs::hasher::Hasher;
 
 pub mod air;
@@ -51,18 +51,20 @@ impl Fibonacci {
 
     pub fn prove(&self) -> Result<StarkProof, ProvingError> {
         let trace = self.get_trace();
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
-            .air
-            .component
-            .claim])));
+        let channel =
+            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[self
+                .air
+                .component
+                .claim])));
         prove(&self.air, channel, vec![trace])
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
-            .air
-            .component
-            .claim])));
+        let channel =
+            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[self
+                .air
+                .component
+                .claim])));
         verify(proof, &self.air, channel)
     }
 }
@@ -96,13 +98,13 @@ impl MultiFibonacci {
 
     pub fn prove(&self) -> Result<StarkProof, ProvingError> {
         let channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
+            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&self.claims)));
         prove(&self.air, channel, self.get_trace())
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
         let channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
+            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&self.claims)));
         verify(proof, &self.air, channel)
     }
 }

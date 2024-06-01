@@ -1,32 +1,14 @@
-use std::iter;
+use sha2::{Digest, Sha256};
 
-use super::fields::m31::{BaseField, N_BYTES_FELT, P};
-use super::fields::qm31::SecureField;
-use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use super::fields::IntoSlice;
-use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::core::vcs::hasher::Hasher;
+use super::fields::m31::M31;
+use super::fields::qm31::{SecureField, QM31};
+use crate::core::fields::cm31::CM31;
+use crate::core::utils::bws_hash_qm31;
+use crate::core::vcs::bws_sha256_hash::BWSSha256Hash;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
-
-#[derive(Default)]
-pub struct ChannelTime {
-    n_challenges: usize,
-    n_sent: usize,
-}
-
-impl ChannelTime {
-    fn inc_sent(&mut self) {
-        self.n_sent += 1;
-    }
-
-    fn inc_challenges(&mut self) {
-        self.n_challenges += 1;
-        self.n_sent = 0;
-    }
-}
 
 pub trait Channel {
     type Digest;
@@ -49,48 +31,18 @@ pub trait Channel {
     fn draw_random_bytes(&mut self) -> Vec<u8>;
 }
 
-/// A channel that can be used to draw random elements from a [Blake2sHash] digest.
-pub struct Blake2sChannel {
-    digest: Blake2sHash,
-    channel_time: ChannelTime,
+/// A channel.
+pub struct BWSSha256Channel {
+    /// Current state of the channel.
+    pub digest: BWSSha256Hash,
 }
 
-impl Blake2sChannel {
-    /// Generates a uniform random vector of BaseField elements.
-    fn draw_base_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
-        // Repeats hashing with an increasing counter until getting a good result.
-        // Retry probability for each round is ~ 2^(-28).
-        loop {
-            let random_bytes: [u32; FELTS_PER_HASH] = self
-                .draw_random_bytes()
-                .chunks_exact(N_BYTES_FELT) // 4 bytes per u32.
-                .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            // Retry if not all the u32 are in the range [0, 2P).
-            if random_bytes.iter().all(|x| *x < 2 * P) {
-                return random_bytes
-                    .into_iter()
-                    .map(|x| BaseField::reduce(x as u64))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap();
-            }
-        }
-    }
-}
-
-impl Channel for Blake2sChannel {
-    type Digest = Blake2sHash;
-    const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
+impl Channel for BWSSha256Channel {
+    type Digest = BWSSha256Hash;
+    const BYTES_PER_HASH: usize = 32;
 
     fn new(digest: Self::Digest) -> Self {
-        Blake2sChannel {
-            digest,
-            channel_time: ChannelTime::default(),
-        }
+        Self { digest }
     }
 
     fn get_digest(&self) -> Self::Digest {
@@ -98,59 +50,85 @@ impl Channel for Blake2sChannel {
     }
 
     fn mix_digest(&mut self, digest: Self::Digest) {
-        self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
-        self.channel_time.inc_challenges();
+        let mut hasher = Sha256::new();
+        Digest::update(&mut hasher, digest);
+        Digest::update(&mut hasher, self.digest);
+        self.digest.0.copy_from_slice(hasher.finalize().as_slice());
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
-        let mut hasher = Blake2sHasher::new();
-        hasher.update(self.digest.as_ref());
-        hasher.update(IntoSlice::<u8>::into_slice(felts));
-
-        self.digest = hasher.finalize();
-        self.channel_time.inc_challenges();
+        for felt in felts.iter() {
+            let mut hasher = Sha256::new();
+            Digest::update(&mut hasher, bws_hash_qm31(felt));
+            Digest::update(&mut hasher, self.digest);
+            self.digest.0.copy_from_slice(hasher.finalize().as_slice());
+        }
     }
 
     fn mix_nonce(&mut self, nonce: u64) {
-        // Copy the elements from the original array to the new array
-        let mut padded_nonce = vec![0; BLAKE_BYTES_PER_HASH];
-        padded_nonce[..8].copy_from_slice(&nonce.to_le_bytes());
+        // mix_nonce is called during PoW. However, later we plan to replace it by a Bitcoin block
+        // inclusion proof, then this function would never be called.
 
-        self.digest =
-            Blake2sHasher::concat_and_hash(&self.digest, &Blake2sHash::from(padded_nonce));
-        self.channel_time.inc_challenges();
+        let mut hash = [0u8; 32];
+        hash[..8].copy_from_slice(&nonce.to_le_bytes());
+
+        self.mix_digest(BWSSha256Hash(hash));
     }
 
     fn draw_felt(&mut self) -> SecureField {
-        let felts: [BaseField; FELTS_PER_HASH] = self.draw_base_felts();
-        SecureField::from_m31_array(felts[..SECURE_EXTENSION_DEGREE].try_into().unwrap())
+        let mut extract = [0u8; 32];
+
+        let mut hasher = Sha256::new();
+        Digest::update(&mut hasher, self.digest);
+        Digest::update(&mut hasher, [0u8]);
+        extract.copy_from_slice(hasher.finalize().as_slice());
+
+        let mut hasher = Sha256::new();
+        Digest::update(&mut hasher, self.digest);
+        self.digest.0.copy_from_slice(hasher.finalize().as_slice());
+
+        let res_1 = Self::extract_common(&extract);
+        let res_2 = Self::extract_common(&extract[4..]);
+        let res_3 = Self::extract_common(&extract[8..]);
+        let res_4 = Self::extract_common(&extract[12..]);
+
+        QM31(CM31(res_1, res_2), CM31(res_3, res_4))
     }
 
     fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField> {
-        let mut felts = iter::from_fn(|| Some(self.draw_base_felts())).flatten();
-        let secure_felts = iter::from_fn(|| {
-            Some(SecureField::from_m31_array([
-                felts.next()?,
-                felts.next()?,
-                felts.next()?,
-                felts.next()?,
-            ]))
-        });
-        secure_felts.take(n_felts).collect()
+        let mut res = vec![];
+        for _ in 0..n_felts {
+            res.push(self.draw_felt());
+        }
+        res
     }
 
     fn draw_random_bytes(&mut self) -> Vec<u8> {
-        let mut hash_input = self.digest.as_ref().to_vec();
+        let mut extract = [0u8; 32];
 
-        // Pad the counter to 32 bytes.
-        let mut padded_counter = [0; BLAKE_BYTES_PER_HASH];
-        let counter_bytes = self.channel_time.n_sent.to_le_bytes();
-        padded_counter[0..counter_bytes.len()].copy_from_slice(&counter_bytes);
+        let mut hasher = Sha256::new();
+        Digest::update(&mut hasher, self.digest);
+        Digest::update(&mut hasher, [0u8]);
+        extract.copy_from_slice(hasher.finalize().as_slice());
 
-        hash_input.extend_from_slice(&padded_counter);
+        let mut hasher = Sha256::new();
+        Digest::update(&mut hasher, self.digest);
+        self.digest.0.copy_from_slice(hasher.finalize().as_slice());
 
-        self.channel_time.inc_sent();
-        Blake2sHasher::hash(&hash_input).into()
+        extract.to_vec()
+    }
+}
+
+impl BWSSha256Channel {
+    fn extract_common(hash: &[u8]) -> M31 {
+        let mut bytes = [0u8; 4];
+        bytes.copy_from_slice(&hash[0..4]);
+
+        let mut res = u32::from_le_bytes(bytes);
+        res &= 0x7fffffff;
+        res = res.saturating_sub(1);
+
+        M31::from(res)
     }
 }
 
@@ -158,52 +136,24 @@ impl Channel for Blake2sChannel {
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::channel::{BWSSha256Channel, Channel};
     use crate::core::fields::qm31::SecureField;
-    use crate::core::vcs::blake2_hash::Blake2sHash;
+    use crate::core::vcs::bws_sha256_hash::BWSSha256Hash;
     use crate::m31;
 
     #[test]
     fn test_initialize_channel() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = BWSSha256Hash::from(vec![0; 32]);
+        let channel = BWSSha256Channel::new(initial_digest);
 
         // Assert that the channel is initialized correctly.
         assert_eq!(channel.digest, initial_digest);
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 0);
-    }
-
-    #[test]
-    fn test_channel_time() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
-
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 0);
-
-        channel.draw_random_bytes();
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 1);
-
-        channel.draw_felts(9);
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 6);
-
-        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
-        assert_eq!(channel.channel_time.n_challenges, 1);
-        assert_eq!(channel.channel_time.n_sent, 0);
-
-        channel.draw_felt();
-        assert_eq!(channel.channel_time.n_challenges, 1);
-        assert_eq!(channel.channel_time.n_sent, 1);
-        assert_ne!(channel.digest, initial_digest);
     }
 
     #[test]
     fn test_draw_random_bytes() {
-        let initial_digest = Blake2sHash::from(vec![1; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = BWSSha256Hash::from(vec![1; 32]);
+        let mut channel = BWSSha256Channel::new(initial_digest);
 
         let first_random_bytes = channel.draw_random_bytes();
 
@@ -213,8 +163,8 @@ mod tests {
 
     #[test]
     pub fn test_draw_felt() {
-        let initial_digest = Blake2sHash::from(vec![2; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = BWSSha256Hash::from(vec![2; 32]);
+        let mut channel = BWSSha256Channel::new(initial_digest);
 
         let first_random_felt = channel.draw_felt();
 
@@ -224,8 +174,8 @@ mod tests {
 
     #[test]
     pub fn test_draw_felts() {
-        let initial_digest = Blake2sHash::from(vec![2; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = BWSSha256Hash::from(vec![2; 32]);
+        let mut channel = BWSSha256Channel::new(initial_digest);
 
         let mut random_felts = channel.draw_felts(5);
         random_felts.extend(channel.draw_felts(4));
@@ -239,8 +189,8 @@ mod tests {
 
     #[test]
     pub fn test_mix_digest() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = BWSSha256Hash::from(vec![0; 32]);
+        let mut channel = BWSSha256Channel::new(initial_digest);
 
         for _ in 0..10 {
             channel.draw_random_bytes();
@@ -248,14 +198,14 @@ mod tests {
         }
 
         // Reseed channel and check the digest was changed.
-        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
+        channel.mix_digest(BWSSha256Hash::from(vec![1; 32]));
         assert_ne!(initial_digest, channel.digest);
     }
 
     #[test]
     pub fn test_mix_felts() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = BWSSha256Hash::from(vec![0; 32]);
+        let mut channel = BWSSha256Channel::new(initial_digest);
         let felts: Vec<SecureField> = (0..2)
             .map(|i| SecureField::from(m31!(i + 1923782)))
             .collect();

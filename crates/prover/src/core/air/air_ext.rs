@@ -6,7 +6,7 @@ use itertools::{zip_eq, Itertools};
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, AirProver, ComponentTrace};
 use crate::core::backend::Backend;
-use crate::core::channel::{Blake2sChannel, Channel};
+use crate::core::channel::{BWSSha256Channel, Channel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -43,7 +43,7 @@ pub trait AirExt: Air {
         component_points
     }
 
-    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interaction_elements(&self, channel: &mut BWSSha256Channel) -> InteractionElements {
         let mut ids = BTreeSet::new();
         for component in self.components() {
             ids.extend(component.interaction_element_ids());

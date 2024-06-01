@@ -14,7 +14,7 @@ mod tests {
     use crate::core::air::{Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::channel::{BWSSha256Channel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::IntoSlice;
@@ -22,7 +22,7 @@ mod tests {
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify};
     use crate::core::utils::shifted_secure_combination;
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::bws_sha256_hash::BWSSha256Hasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
     use crate::m31;
@@ -193,11 +193,11 @@ mod tests {
             .collect_vec();
         let air = WideFibAir { component };
         let prover_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[])));
         let proof = prove::<CpuBackend>(&air, prover_channel, trace).unwrap();
 
         let verifier_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[])));
         verify(proof, &air, verifier_channel).unwrap();
     }
 }

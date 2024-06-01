@@ -204,12 +204,12 @@ mod tests {
     use num_traits::One;
 
     use crate::core::backend::CpuBackend;
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::channel::{BWSSha256Channel, Channel};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
     use crate::core::lookups::mle::Mle;
     use crate::core::lookups::sumcheck::{partially_verify, prove_batch};
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::bws_sha256_hash::BWSSha256Hasher;
     use crate::core::vcs::hasher::Hasher;
 
     #[test]
@@ -285,8 +285,8 @@ mod tests {
         assert!(partially_verify(claim, &invalid_proof, &mut test_channel()).is_err());
     }
 
-    fn test_channel() -> Blake2sChannel {
-        let seed = Blake2sHasher::hash(&[]);
-        Blake2sChannel::new(seed)
+    fn test_channel() -> BWSSha256Channel {
+        let seed = BWSSha256Hasher::hash(&[]);
+        BWSSha256Channel::new(seed)
     }
 }

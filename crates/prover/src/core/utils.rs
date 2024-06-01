@@ -1,9 +1,10 @@
 use std::iter::Peekable;
 
 use num_traits::{One, Zero};
+use sha2::{Digest, Sha256};
 
 use super::fields::m31::{BaseField, M31};
-use super::fields::qm31::SecureField;
+use super::fields::qm31::{SecureField, QM31};
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -114,6 +115,32 @@ pub fn bws_num_to_bytes(v: M31) -> Vec<u8> {
     }
 
     bytes
+}
+
+/// Compute the Bitcoin-friendly hash of a single QM31 element.
+pub fn bws_hash_qm31(v: &QM31) -> [u8; 32] {
+    let mut res = [0u8; 32];
+
+    let mut hasher = Sha256::new();
+    Digest::update(&mut hasher, bws_num_to_bytes(v.0 .0));
+    res.copy_from_slice(hasher.finalize().as_slice());
+
+    let mut hasher = Sha256::new();
+    Digest::update(&mut hasher, bws_num_to_bytes(v.0 .1));
+    Digest::update(&mut hasher, res);
+    res.copy_from_slice(hasher.finalize().as_slice());
+
+    let mut hasher = Sha256::new();
+    Digest::update(&mut hasher, bws_num_to_bytes(v.1 .0));
+    Digest::update(&mut hasher, res);
+    res.copy_from_slice(hasher.finalize().as_slice());
+
+    let mut hasher = Sha256::new();
+    Digest::update(&mut hasher, bws_num_to_bytes(v.1 .1));
+    Digest::update(&mut hasher, res);
+    res.copy_from_slice(hasher.finalize().as_slice());
+
+    res
 }
 
 #[cfg(test)]

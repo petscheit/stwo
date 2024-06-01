@@ -124,11 +124,11 @@ mod tests {
 
     use super::{gen_trace, WideFibAir};
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::channel::{BWSSha256Channel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
     use crate::core::prover::{prove, verify};
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::bws_sha256_hash::BWSSha256Hasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::wide_fibonacci::component::{WideFibComponent, LOG_N_COLUMNS};
 
@@ -148,11 +148,11 @@ mod tests {
         let span = span!(Level::INFO, "Trace generation").entered();
         let trace = gen_trace(component.log_column_size());
         span.exit();
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let channel = &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[])));
         let air = WideFibAir { component };
         let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
 
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let channel = &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[])));
         verify(proof, &air, channel).unwrap();
     }
 }
