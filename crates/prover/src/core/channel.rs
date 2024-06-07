@@ -31,6 +31,7 @@ pub trait Channel {
     fn draw_random_bytes(&mut self) -> Vec<u8>;
 }
 
+#[derive(Clone)]
 /// A channel.
 pub struct BWSSha256Channel {
     /// Current state of the channel.

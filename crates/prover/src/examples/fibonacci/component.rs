@@ -29,7 +29,7 @@ impl FibonacciComponent {
     /// Evaluates the step constraint quotient polynomial on a single point.
     /// The step constraint is defined as:
     ///   mask[0]^2 + mask[1]^2 - mask[2]
-    fn step_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
+    pub fn step_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
         &self,
         point: CirclePoint<F>,
         mask: &[F; 3],
@@ -51,7 +51,7 @@ impl FibonacciComponent {
     }
 
     /// Evaluates the boundary constraint quotient polynomial on a single point.
-    fn boundary_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
+    pub fn boundary_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
         &self,
         point: CirclePoint<F>,
         mask: &[F; 1],
