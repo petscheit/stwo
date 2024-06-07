@@ -127,7 +127,7 @@ impl BWSSha256Channel {
 
         let mut res = u32::from_le_bytes(bytes);
         res &= 0x7fffffff;
-        res = res.saturating_sub(1);
+        res %= (1 << 31) - 1;
 
         M31::from(res)
     }
