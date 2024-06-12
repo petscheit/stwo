@@ -51,13 +51,14 @@ pub struct AdditionalProofData {
 
 pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     channel: &mut Channel,
+    max_degree: u32,
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<CommitmentSchemeProver<B>, ProvingError> {
     let span = span!(Level::INFO, "Trace interpolation").entered();
     let trace_polys = trace
         .into_iter()
-        .map(|poly| poly.interpolate_with_twiddles(twiddles))
+        .map(|poly| poly.interpolate_with_twiddles(twiddles).extend(max_degree))
         .collect();
     span.exit();
 
@@ -130,6 +131,13 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<StarkProof, ProvingError> {
+    let max_degree = trace
+        .iter()
+        .map(|x| x.domain.log_size())
+        .chain([air.composition_log_degree_bound()])
+        .max()
+        .unwrap();
+
     // Check that traces are not too big.
     for (i, trace) in trace.iter().enumerate() {
         if trace.domain.log_size() + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
@@ -156,7 +164,8 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     );
     span.exit();
 
-    let mut commitment_scheme = evaluate_and_commit_on_trace(channel, &twiddles, trace)?;
+    let mut commitment_scheme =
+        evaluate_and_commit_on_trace(channel, max_degree, &twiddles, trace)?;
 
     generate_proof(air, channel, &twiddles, &mut commitment_scheme)
 }
