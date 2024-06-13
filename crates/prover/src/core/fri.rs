@@ -195,24 +195,22 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
         let first_layer_domain = LineDomain::new(Coset::half_odds(first_layer_size.ilog2()));
         let mut layer_evaluation = LineEvaluation::new_zero(first_layer_domain);
 
-        let mut columns = columns.iter().peekable();
+        assert_eq!(columns.len(), 1);
+        assert_eq!(folded_len(&columns[0]), layer_evaluation.len());
 
         let mut layers = Vec::new();
 
         // Circle polynomials can all be folded with the same alpha.
         let circle_poly_alpha = channel.draw_felt();
 
-        while layer_evaluation.len() > config.last_layer_domain_size() {
-            // Check for any columns (circle poly evaluations) that should be combined.
-            while let Some(column) = columns.next_if(|c| folded_len(c) == layer_evaluation.len()) {
-                B::fold_circle_into_line(
-                    &mut layer_evaluation,
-                    column,
-                    circle_poly_alpha,
-                    twiddles,
-                );
-            }
+        B::fold_circle_into_line(
+            &mut layer_evaluation,
+            &columns[0],
+            circle_poly_alpha,
+            twiddles,
+        );
 
+        while layer_evaluation.len() > config.last_layer_domain_size() {
             let layer = FriLayerProver::new(layer_evaluation);
             channel.mix_digest(layer.merkle_tree.root());
             let folding_alpha = channel.draw_felt();
@@ -221,9 +219,6 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
             layer_evaluation = folded_layer_evaluation;
             layers.push(layer);
         }
-
-        // Check all columns have been consumed.
-        assert!(columns.is_empty());
 
         (layers, layer_evaluation)
     }
@@ -1142,52 +1137,6 @@ mod tests {
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
         verifier.decommit_on_queries(&queries, vec![decommitment_value])
-    }
-
-    #[test]
-    fn valid_mixed_degree_proof_passes_verification() -> Result<(), FriVerificationError> {
-        const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let evaluations = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let log_domain_size = evaluations[0].domain.log_size();
-        let queries = Queries::from_positions(vec![7, 70], log_domain_size);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let prover = FriProver::commit(
-            &mut test_channel(),
-            config,
-            &evaluations,
-            &CpuBackend::precompute_twiddles(evaluations[0].domain.half_coset),
-        );
-        let decommitment_values = evaluations.map(|p| query_polynomial(&p, &queries)).to_vec();
-        let proof = prover.decommit_on_queries(&queries);
-        let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
-
-        verifier.decommit_on_queries(&queries, decommitment_values)
-    }
-
-    #[test]
-    fn valid_mixed_degree_end_to_end_proof_passes_verification() -> Result<(), FriVerificationError>
-    {
-        const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let evaluations = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
-        let prover = FriProver::commit(
-            &mut test_channel(),
-            config,
-            &evaluations,
-            &CpuBackend::precompute_twiddles(evaluations[0].domain.half_coset),
-        );
-        let (proof, prover_opening_positions) = prover.decommit(&mut test_channel());
-        let decommitment_values = zip(&evaluations, prover_opening_positions.values().rev())
-            .map(|(poly, positions)| open_polynomial(poly, positions))
-            .collect();
-        let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
-
-        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
-        let verifier_opening_positions = verifier.column_query_positions(&mut test_channel());
-
-        assert_eq!(prover_opening_positions, verifier_opening_positions);
-        verifier.decommit(decommitment_values)
     }
 
     #[test]
