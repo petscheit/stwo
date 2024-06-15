@@ -5,7 +5,9 @@ use std::iter::zip;
 use itertools::{izip, multiunzip, Itertools};
 use tracing::{span, Level};
 
-use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_constants};
+use crate::core::backend::cpu::quotients::{
+    accumulate_row_quotients, denominator_inverses, line_batch_random_coeffs,
+};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -139,9 +141,11 @@ pub fn fri_answers_for_log_size(
         .collect_vec();
 
     let mut evals = Vec::new();
+    let (line_coeffs, batch_random_coeffs) =
+        line_batch_random_coeffs(&sample_batches, random_coeff);
     for subdomain in query_domain.iter() {
         let domain = subdomain.to_circle_domain(&commitment_domain);
-        let quotient_constants = quotient_constants(&sample_batches, random_coeff, domain);
+        let denominator_inverses = denominator_inverses(&sample_batches, domain);
         let mut column_evals = Vec::new();
         for queried_values in queried_values_per_column.iter_mut() {
             let eval = CircleEvaluation::new(
@@ -157,7 +161,9 @@ pub fn fri_answers_for_log_size(
             let value = accumulate_row_quotients(
                 &sample_batches,
                 &column_evals.iter().collect_vec(),
-                &quotient_constants,
+                &line_coeffs,
+                &batch_random_coeffs,
+                &denominator_inverses,
                 row,
                 domain_point,
             );

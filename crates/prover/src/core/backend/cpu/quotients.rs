@@ -14,6 +14,17 @@ use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse, bit_reverse_index};
 
+/// Line coefficients for each quotient numerator term.
+/// Specifically, for the i-th (in a sample batch) column's numerator term
+/// `alpha^i * (c * F(p) - (a * p.y + b))`, we precompute and return the constants:
+/// (`alpha^i * a`, `alpha^i * b`, `alpha^i * c`)
+/// scheme:  [number of quotients, number of quotient terms]
+pub type LineCoeffs = Vec<Vec<(SecureField, SecureField, SecureField)>>;
+/// Random coefficients used to linearly combine the batched quotients.
+/// Specifically, for each sample batch we compute random_coeff^(number of columns in the batch),
+/// scheme: [number of quotients]
+pub type BatchCoeff = Vec<SecureField>;
+
 impl QuotientOps for CpuBackend {
     fn accumulate_quotients(
         domain: CircleDomain,
@@ -22,7 +33,9 @@ impl QuotientOps for CpuBackend {
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
         let mut values = SecureColumn::zeros(domain.size());
-        let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
+        let (line_coeffs, batch_random_coeffs) =
+            line_batch_random_coeffs(sample_batches, random_coeff);
+        let denominator_inverses = denominator_inverses(sample_batches, domain);
 
         // TODO(spapini): bit reverse iterator.
         for row in 0..domain.size() {
@@ -31,7 +44,9 @@ impl QuotientOps for CpuBackend {
             let row_value = accumulate_row_quotients(
                 sample_batches,
                 columns,
-                &quotient_constants,
+                &line_coeffs,
+                &batch_random_coeffs,
+                &denominator_inverses,
                 row,
                 domain_point,
             );
@@ -46,16 +61,18 @@ impl QuotientOps for CpuBackend {
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>],
-    quotient_constants: &QuotientConstants<CpuBackend>,
+    line_coeffs: &LineCoeffs,
+    batch_coeffs: &BatchCoeff,
+    denominator_inverses: &Vec<Col<CpuBackend, SecureField>>,
     row: usize,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
     for (sample_batch, line_coeffs, batch_coeff, denominator_inverses) in izip!(
         sample_batches,
-        &quotient_constants.line_coeffs,
-        &quotient_constants.batch_random_coeffs,
-        &quotient_constants.denominator_inverses
+        line_coeffs,
+        batch_coeffs,
+        denominator_inverses
     ) {
         let mut numerator = SecureField::zero();
         for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
@@ -112,7 +129,7 @@ pub fn batch_random_coeffs(
         .collect()
 }
 
-fn denominator_inverses(
+pub fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
 ) -> Vec<Col<CpuBackend, SecureField>> {
@@ -142,29 +159,24 @@ fn denominator_inverses(
         .collect()
 }
 
-pub fn quotient_constants(
+pub fn line_batch_random_coeffs(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
-    domain: CircleDomain,
-) -> QuotientConstants<CpuBackend> {
-    let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
-    let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
-    let denominator_inverses = denominator_inverses(sample_batches, domain);
-    QuotientConstants {
-        line_coeffs,
-        batch_random_coeffs,
-        denominator_inverses,
-    }
+) -> (LineCoeffs, BatchCoeff) {
+    (
+        column_line_coeffs(sample_batches, random_coeff),
+        batch_random_coeffs(sample_batches, random_coeff),
+    )
 }
 
 /// Holds the precomputed constant values used in each quotient evaluation.
 pub struct QuotientConstants<B: Backend> {
     /// The line coefficients for each quotient numerator term. For more details see
     /// [self::column_line_coeffs].
-    pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
+    pub line_coeffs: LineCoeffs,
     /// The random coefficients used to linearly combine the batched quotients For more details see
     /// [self::batch_random_coeffs].
-    pub batch_random_coeffs: Vec<SecureField>,
+    pub batch_random_coeffs: BatchCoeff,
     /// The inverses of the denominators of the quotients.
     pub denominator_inverses: Vec<Col<B, SecureField>>,
 }
