@@ -129,10 +129,10 @@ pub fn complex_conjugate_line_coeffs_normalized(sample: &PointSample) -> (CM31, 
     );
     let a = sample.value.1;
     let c = sample.point.y.1;
-    let b = sample.value.0 * sample.point.y.1 - sample.point.y.0 * sample.value.1;
 
     let normalized_a = a * c.inverse();
-    let normalized_b = b * c.inverse();
+    let normalized_b = sample.value.0 - sample.point.y.0 * normalized_a;
+
     (normalized_a, normalized_b)
 }
 
