@@ -3,8 +3,9 @@ use num_traits::One;
 use super::circle::{CirclePoint, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
+use super::fields::{ComplexOf, ExtensionOf, FieldExpOps};
 use super::pcs::quotients::PointSample;
+use crate::core::fields::cm31::CM31;
 use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.
@@ -61,6 +62,15 @@ pub fn pair_vanishing<F: ExtensionOf<BaseField>>(
         + (excluded0.x * excluded1.y - excluded0.y * excluded1.x)
 }
 
+// A vanishing polynomial for very special case.
+pub fn fast_pair_vanishing<F: ExtensionOf<BaseField> + ComplexOf<CM31>>(
+    excluded0: CirclePoint<F>,
+    p: CirclePoint<BaseField>,
+) -> CM31 {
+    let d = excluded0.x.get_imag() * excluded0.y.get_imag().inverse();
+    CM31::from(p.x) - CM31::from(p.y) * d + d * excluded0.y.get_real() - excluded0.x.get_real()
+}
+
 /// Evaluates a vanishing polynomial of the vanish_point at a point.
 /// Note that this function has a pole on the antipode of the vanish_point.
 pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
@@ -102,26 +112,28 @@ pub fn complex_conjugate_line(
             / (point.complex_conjugate().y - point.y)
 }
 
+/// Compute the complex_conjugate_line_coeffs but normalize c = 1
+///
+/// `complex_conjugate_line_coeffs`:
 /// Evaluates the coefficients of a line between a point and its complex conjugate. Specifically,
 /// `a, b, and c, s.t. a*x + b -c*y = 0` for (x,y) being (sample.y, sample.value) and
 /// (conj(sample.y), conj(sample.value)).
 /// Relies on the fact that every polynomial F over the base
 /// field holds: F(p*) == F(p)* (* being the complex conjugate).
-pub fn complex_conjugate_line_coeffs(
-    sample: &PointSample,
-    alpha: SecureField,
-) -> (SecureField, SecureField, SecureField) {
-    // TODO(AlonH): This assertion will fail at a probability of 1 to 2^62. Use a better solution.
+pub fn complex_conjugate_line_coeffs_normalized(sample: &PointSample) -> (CM31, CM31) {
     assert_ne!(
         sample.point.y,
         sample.point.y.complex_conjugate(),
         "Cannot evaluate a line with a single point ({:?}).",
         sample.point
     );
-    let a = sample.value.complex_conjugate() - sample.value;
-    let c = sample.point.complex_conjugate().y - sample.point.y;
-    let b = sample.value * c - a * sample.point.y;
-    (alpha * a, alpha * b, alpha * c)
+    let a = sample.value.1;
+    let c = sample.point.y.1;
+    let b = sample.value.0 * sample.point.y.1 - sample.point.y.0 * sample.value.1;
+
+    let normalized_a = a * c.inverse();
+    let normalized_b = b * c.inverse();
+    (normalized_a, normalized_b)
 }
 
 #[cfg(test)]

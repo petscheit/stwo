@@ -3,7 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
-use super::{ComplexConjugate, FieldExpOps};
+use super::{ComplexConjugate, ComplexOf, FieldExpOps};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
@@ -63,6 +63,22 @@ impl Mul for QM31 {
             self.0 * rhs.0 + R * self.1 * rhs.1,
             self.0 * rhs.1 + self.1 * rhs.0,
         )
+    }
+}
+
+impl From<CM31> for QM31 {
+    fn from(value: CM31) -> Self {
+        Self(value, CM31::zero())
+    }
+}
+
+impl ComplexOf<CM31> for QM31 {
+    fn get_real(&self) -> CM31 {
+        self.0
+    }
+
+    fn get_imag(&self) -> CM31 {
+        self.1
     }
 }
 

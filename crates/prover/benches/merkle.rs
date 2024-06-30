@@ -3,7 +3,6 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use itertools::Itertools;
 use num_traits::Zero;
-use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::{Col, CpuBackend};
 use stwo_prover::core::fields::m31::{BaseField, N_BYTES_FELT};
 use stwo_prover::core::vcs::bws_sha256_merkle::BWSSha256MerkleHasher;
@@ -27,7 +26,6 @@ fn bench_sha256_merkle<B: MerkleOps<BWSSha256MerkleHasher>>(c: &mut Criterion, i
 }
 
 fn sha256_merkle_benches(c: &mut Criterion) {
-    bench_sha256_merkle::<SimdBackend>(c, "simd");
     bench_sha256_merkle::<CpuBackend>(c, "cpu");
 }
 

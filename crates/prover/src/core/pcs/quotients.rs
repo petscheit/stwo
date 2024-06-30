@@ -162,11 +162,11 @@ pub fn fri_answers_for_log_size(
             let value = accumulate_row_quotients(
                 &sample_batches,
                 &column_evals.iter().collect_vec(),
-                &line_coeffs,
-                &batch_random_coeffs,
+                (&line_coeffs, &batch_random_coeffs),
                 &denominator_inverses,
                 row,
                 domain_point,
+                random_coeff,
             );
             values.push(value);
         }
