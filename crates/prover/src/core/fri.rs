@@ -847,7 +847,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriLayerProver<B, H> {
 /// Holds a foldable subset of circle polynomial evaluations.
 #[derive(Debug, Clone)]
 pub struct SparseCircleEvaluation {
-    subcircle_evals: Vec<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>,
+    pub subcircle_evals: Vec<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>,
 }
 
 impl SparseCircleEvaluation {
