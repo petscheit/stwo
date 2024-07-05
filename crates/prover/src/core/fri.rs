@@ -433,12 +433,13 @@ impl<H: MerkleHasher> FriVerifier<H> {
         decommitted_values: Vec<SparseCircleEvaluation>,
     ) -> Result<(Queries, Vec<SecureField>), FriVerificationError> {
         let circle_poly_alpha = self.circle_poly_alpha;
-        let circle_poly_alpha_sq = circle_poly_alpha * circle_poly_alpha;
 
         let mut decommitted_values = decommitted_values.into_iter();
         let mut column_bounds = self.column_bounds.iter().copied().peekable();
         let mut layer_queries = queries.fold(CIRCLE_TO_LINE_FOLD_STEP);
         let mut layer_query_evals = vec![SecureField::zero(); layer_queries.len()];
+
+        let mut insertion = false;
 
         for layer in self.inner_layers.iter() {
             // Check for column evals that need to folded into this layer.
@@ -446,12 +447,15 @@ impl<H: MerkleHasher> FriVerifier<H> {
                 .next_if(|b| b.fold_to_line() == layer.degree_bound)
                 .is_some()
             {
+                assert!(!insertion); // enforce that this can only be performed once
+                insertion = true;
+
                 let sparse_evaluation = decommitted_values.next().unwrap();
                 let folded_evals = sparse_evaluation.fold(circle_poly_alpha);
                 assert_eq!(folded_evals.len(), layer_query_evals.len());
 
                 for (layer_eval, folded_eval) in zip(&mut layer_query_evals, folded_evals) {
-                    *layer_eval = *layer_eval * circle_poly_alpha_sq + folded_eval;
+                    *layer_eval = folded_eval;
                 }
             }
 
@@ -957,7 +961,6 @@ pub fn fold_circle_into_line(
     assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
 
     let domain = src.domain;
-    let alpha_sq = alpha * alpha;
 
     src.into_iter()
         .array_chunks()
@@ -974,7 +977,10 @@ pub fn fold_circle_into_line(
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
             let f_prime = alpha * f1_px + f0_px;
 
-            dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime);
+            // enforce the dst can only accept folded value once.
+            assert_eq!(dst.values.at(i), SecureField::zero());
+            // alpha_sq is therefore unused.
+            dst.values.set(i, f_prime);
         });
 }
 
