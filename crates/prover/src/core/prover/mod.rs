@@ -180,6 +180,10 @@ pub fn verify(
     commitment_scheme.commit(proof.commitments[0], air.column_log_sizes(), channel);
     let random_coeff = channel.draw_felt();
 
+    // println!("Commitment Scheme Proof: {:#?}", proof.commitment_scheme_proof);
+
+    // println!("random_coeff: {:#?}", random_coeff);
+
     // Read composition polynomial commitment.
     commitment_scheme.commit(
         proof.commitments[1],
@@ -190,12 +194,17 @@ pub fn verify(
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::bws_get_random_point(channel);
 
+    // println!("oods_point: {:#?}", oods_point);
+
     // Get mask sample points relative to oods point.
     let trace_sample_points = air.mask_points(oods_point);
+
+    // println!("trace_sample_points: {:#?}", trace_sample_points);
 
     // TODO(spapini): Change when we support multiple interactions.
     // First tree - trace.
     let mut sample_points = TreeVec::new(vec![trace_sample_points.flatten()]);
+    // println!("sample_points: {:#?}", sample_points);
     // Second tree - composition polynomial.
     sample_points.push(vec![vec![oods_point]; 4]);
 
@@ -207,6 +216,9 @@ pub fn verify(
     .map_err(|_| {
         VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
     })?;
+
+    // println!("trace_oods_values: {:#?}", trace_oods_values);
+    // println!("composition_oods_value: {:#?}", composition_oods_value);
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)

@@ -35,12 +35,16 @@ impl Fibonacci {
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
         let mut trace = Vec::with_capacity(trace_domain.size());
 
+        println!("trace_domain: {:?}", trace_domain);
+        println!("trace_domain.size(): {:?}", trace_domain.size());
         // Fill trace with fibonacci squared.
         let mut a = BaseField::one();
         let mut b = BaseField::one();
         for _ in 0..trace_domain.size() {
+            println!("a: {:?}, b: {:?}", a, b);
             trace.push(a);
             let tmp = a.square() + b.square();
+            println!("a^2 + a^2: {:?}", tmp);
             a = b;
             b = tmp;
         }
@@ -126,10 +130,18 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::VerificationError;
+    use crate::core::prover::{VerificationError};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::{m31, qm31};
+
+    #[test]
+    pub fn test_verify() {
+        let fib = Fibonacci::new(5, m31!(443693538));
+        let proof = fib.prove().unwrap();
+        // println!("Proof: {:?}", proof);
+        assert!(fib.verify(proof).is_ok());
+    }
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
         let mut rng = SmallRng::seed_from_u64(0);
@@ -161,6 +173,8 @@ mod tests {
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
         let points = fib.air.mask_points(point);
+
+        println!("points: {:?}", points);
         let mask_values = zip(&component_traces[0].polys, &points[0])
             .map(|(poly, points)| {
                 points
