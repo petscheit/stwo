@@ -51,8 +51,6 @@ impl Factorial {
 
         }
 
-        println!("Trace: {:?}", trace);
-
         CpuCircleEvaluation::new_canonical_ordered(trace_domain, trace)
     }
 
@@ -101,7 +99,7 @@ mod tests {
             (vec![M31(4), M31(1), M31(3), M31(3), M31(2), M31(12), M31(1), M31(24)], false),
             (vec![M31(4), M31(1), M31(3), M31(4), M31(2), M31(11), M31(1), M31(24)], false),
             (vec![M31(4), M31(1), M31(1), M31(4), M31(2), M31(12), M31(1), M31(24)], false),
-            // (vec![M31(4), M31(1), M31(4), M31(4), M31(3), M31(8), M31(2), M31(24)], false),
+            (vec![M31(4), M31(1), M31(4), M31(4), M31(3), M31(16), M31(2), M31(48)], false),
         ];
 
         for (trace, valid) in traces {

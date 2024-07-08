@@ -32,16 +32,34 @@ impl FactorialComponent {
 
     /// Evaluates the step constraint quotient polynomial on a single point.
     /// The step constraint is defined as:
-    ///   mask[0] * mask[2] - mask[3]
+    ///   mask[0] * mask[1] - mask[3]
     pub fn step_constraint_eval_multiplication<F: ExtensionOf<BaseField>>(
         &self,
         point: CirclePoint<F>,
         mask: &[F; 4],
     ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size - 1);
-        let constraint_value = mask[0] * mask[1] - mask[3];
-        // let constraint_value = mask[0] - mask[1] - BaseField::from(2);
+        let super_safe_random_value: F = BaseField::from(23481234).into();
+        let constraint_value = mask[0] * mask[1] - mask[3] + (mask[0] - mask[2] - BaseField::one()) * super_safe_random_value; // ToDo: remove unused mask[2]
         let selector = point_excluder(
+            constraint_zero_domain
+                .at(constraint_zero_domain.size() - 1)
+                .into_ef(),
+            point,
+        );
+        let num = constraint_value * selector;
+        let denom = coset_vanishing(constraint_zero_domain, point);
+        num / denom
+    }
+
+    pub fn step_constraint_eval_decrement<F: ExtensionOf<BaseField>>(
+        &self,
+        point: CirclePoint<F>,
+        mask: &[F; 2],
+    ) -> F {
+        let constraint_zero_domain = Coset::subgroup(self.log_size - 1);
+        let constraint_value = mask[0] - mask[1] - BaseField::one();
+         let selector = point_excluder(
             constraint_zero_domain
                 .at(constraint_zero_domain.size() - 1)
                 .into_ef(),
@@ -110,6 +128,11 @@ impl Component for FactorialComponent {
         evaluation_accumulator.accumulate(
             self.step_constraint_eval_multiplication(point, &mask[0][..].try_into().unwrap()),
         );
+
+        // evaluation_accumulator.accumulate(
+        //     self.step_constraint_eval_decrement(point, &mask[0][..].try_into().unwrap()),
+        //     // self.step_constraint_eval_decrement(point, &mask[0][..].try_into().unwrap()),
+        // );
         // evaluation_accumulator.accumulate(
         //     self.boundary_constraint_eval_quotient_by_mask(
         //         point,
@@ -156,10 +179,13 @@ impl ComponentProver<CpuBackend> for FactorialComponent {
             for (i, point) in point_coset.iter().enumerate() {
 
                 let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul], eval[i as isize + 3 * mul]];
-                // let mut res = self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]])
-                //     * accum.random_coeff_powers[0];
                 let res = self.step_constraint_eval_multiplication(point, &mask)
                     * accum.random_coeff_powers[0];
+
+
+                // let mask = [eval[i], eval[i as isize + 2 * mul]];
+                // res += self.step_constraint_eval_decrement(point, &mask)
+                //     * accum.random_coeff_powers[1];
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
