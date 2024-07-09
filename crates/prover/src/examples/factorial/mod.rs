@@ -1,6 +1,3 @@
-// use num_traits::{One};
-
-// use num_traits::One;
 use num_traits::One;
 use self::air::{FactorialAir};
 use crate::core::backend::cpu::CpuCircleEvaluation;
@@ -22,8 +19,8 @@ pub struct Factorial {
 }
 
 impl Factorial {
-    pub fn new() -> Self {
-        let component = FactorialComponent::new();
+    pub fn new(n: u32, log_size: u32, claim: u32) -> Self {
+        let component = FactorialComponent::new(n, log_size, claim);
         Self {
             air: FactorialAir::new(component),
         }
@@ -32,7 +29,6 @@ impl Factorial {
     pub fn get_trace(&self) -> CpuCircleEvaluation<BaseField, BitReversedOrder> {
         // Trace.
         let trace_domain = CanonicCoset::new(self.air.component.log_size);
-        // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
         let mut trace = Vec::with_capacity(trace_domain.size());
 
         // Fill trace with fibonacci squared.
@@ -95,6 +91,8 @@ mod tests {
         let traces = vec![
             (vec![M31(4), M31(1), M31(3), M31(4), M31(2), M31(12), M31(1), M31(24)], true),
             (vec![M31(3), M31(1), M31(3), M31(4), M31(2), M31(12), M31(1), M31(24)], false),
+            (vec![M31(3), M31(1), M31(3), M31(4), M31(2), M31(12), M31(2), M31(24)], false),
+            (vec![M31(3), M31(1), M31(3), M31(4), M31(2), M31(12), M31(1), M31(23)], false),
             (vec![M31(4), M31(0), M31(3), M31(4), M31(2), M31(12), M31(1), M31(24)], false),
             (vec![M31(4), M31(1), M31(3), M31(3), M31(2), M31(12), M31(1), M31(24)], false),
             (vec![M31(4), M31(1), M31(3), M31(4), M31(2), M31(11), M31(1), M31(24)], false),
@@ -108,8 +106,15 @@ mod tests {
 
             let channel =
             &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[BaseField::from(24)])));
-            let proof = prove(&FactorialAir::new(FactorialComponent::new()), channel, vec![trace_conv]);
+            let proof = prove(&FactorialAir::new(FactorialComponent::new(4, 3, 24)), channel, vec![trace_conv]);
             assert_eq!(proof.is_ok(), valid);
         }
+    }
+
+    #[test]
+    pub fn test_proving() {
+        let factorial = super::Factorial::new(8, 4, 40320);
+        let proof = factorial.prove();
+        assert!(proof.is_ok());
     }
 }
