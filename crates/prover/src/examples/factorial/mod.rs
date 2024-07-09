@@ -112,9 +112,12 @@ mod tests {
     }
 
     #[test]
-    pub fn test_proving() {
+    pub fn test_proving_and_vcerification() {
         let factorial = super::Factorial::new(8, 4, 40320);
         let proof = factorial.prove();
         assert!(proof.is_ok());
+
+        let valid = factorial.verify(proof.unwrap());
+        assert!(valid.is_ok());
     }
 }
