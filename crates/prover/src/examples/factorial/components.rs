@@ -10,7 +10,7 @@ use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing, point_excluder};
 use crate::core::fields::m31::{BaseField,};
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::fields::{ExtensionOf};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
@@ -23,12 +23,12 @@ pub struct FactorialComponent {
     pub claim: BaseField,
 }
 
-fn multiply_circle<F: ExtensionOf<BaseField>>(a: CirclePoint<F>, b: CirclePoint<F>) -> CirclePoint<F> {
-    CirclePoint {
-        x: a.x * b.x - a.y * b.y,
-        y: a.x * b.y + a.y * b.x,
-    }
-}
+// fn multiply_circle<F: ExtensionOf<BaseField>>(a: CirclePoint<F>, b: CirclePoint<F>) -> CirclePoint<F> {
+//     CirclePoint {
+//         x: a.x * b.x - a.y * b.y,
+//         y: a.x * b.y + a.y * b.x,
+//     }
+// }
 
 impl FactorialComponent {
     pub fn new(n: u32, log_size: u32, claim: u32) -> Self {
@@ -80,22 +80,42 @@ impl FactorialComponent {
     //     num / denom
     // }
 
-     // The constraint is not used, as we couldn't get it to work properly. The logic has been defined though, we just ran out of time.
-     pub fn boundary_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
+    //  // The constraint is not used, as we couldn't get it to work properly. The logic has been defined though, we just ran out of time.
+    //  pub fn boundary_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
+    //     &self,
+    //     point: CirclePoint<F>,
+    //     mask: &[F; 1],
+    // ) -> F {
+    //     let constraint_zero_domain = Coset::subgroup(self.log_size);
+    //     let g_1 = constraint_zero_domain.at(1);
+    //     let g_minus_1 = constraint_zero_domain.at(constraint_zero_domain.size() - 1);
+    //     let g_minus_2 = constraint_zero_domain.at(constraint_zero_domain.size() - 2);
+    //     // On g^1, we should get 1.
+    //     // On g^-2, we should get 1.
+    //     // 1 + (point * g_minus_1).y * (self.claim - 1) * (g_minus_2.y)^-1
+    //     let linear = F::one() + multiply_circle(point, g_minus_1.into_ef()).y * (self.claim - BaseField::one()) * (g_minus_2.y).inverse();
+    //     let num = mask[0] - linear;
+    //     let denom = pair_vanishing(g_minus_1.into_ef(), g_1.into_ef(), point);
+    //     num / denom
+    // }
+
+    pub fn boundary_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
         &self,
         point: CirclePoint<F>,
         mask: &[F; 1],
     ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
-        let g_1 = constraint_zero_domain.at(1);
-        let g_minus_1 = constraint_zero_domain.at(constraint_zero_domain.size() - 1);
-        let g_minus_2 = constraint_zero_domain.at(constraint_zero_domain.size() - 2);
-        // On g^1, we should get 1.
-        // On p, we should get self.claim.
-        // 1 + (point * g_minus_1).y * (self.claim - 1) * (g_minus_2.y)^-1
-        let linear = F::one() + multiply_circle(point, g_minus_1.into_ef()).y * (self.claim - BaseField::one()) * (g_minus_2.y).inverse();
+        let g_minus_1 = constraint_zero_domain.at(constraint_zero_domain.size() - 1).into_ef();
+        let g_2 = constraint_zero_domain.at(2).into_ef();
+
+        // On g1, we should get 1.
+        // On g_minus_2 we should get 1
+        let linear = ((point + g_minus_1).x - BaseField::from(1)) * ((point + g_2).x - BaseField::from(1)) + F::one();
         let num = mask[0] - linear;
-        let denom = pair_vanishing(g_minus_1.into_ef(), g_1.into_ef(), point);
+
+        let g_1 = constraint_zero_domain.at(1).into_ef();
+        let g_minus_2 = constraint_zero_domain.at(constraint_zero_domain.size() - 2).into_ef();
+        let denom = pair_vanishing(g_minus_2, g_1, point);
         num / denom
     }
 }
@@ -140,12 +160,12 @@ impl Component for FactorialComponent {
         );
 
         // Not running, as not working
-        // evaluation_accumulator.accumulate(
-        //     self.boundary_constraint_eval_quotient_by_mask(
-        //         point,
-        //         &mask[0][..1].try_into().unwrap(),
-        //     ),
-        // );
+        evaluation_accumulator.accumulate(
+            self.boundary_constraint_eval_quotient_by_mask(
+                point,
+                &mask[0][..1].try_into().unwrap(),
+            ),
+        );
     }
 }
 
@@ -186,13 +206,18 @@ impl ComponentProver<CpuBackend> for FactorialComponent {
             for (i, point) in point_coset.iter().enumerate() {
 
                 let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul], eval[i as isize + 3 * mul]];
-                let res = self.step_constraint_eval_multiplication(point, &mask)
+                let mut res = self.step_constraint_eval_multiplication(point, &mask)
                     * accum.random_coeff_powers[0];
 
+                // println!("res: {:?}", res);
 
                 // Boundry constraint is not functioning properly. The logic is outlined in a comment thought
-                // res += self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]])
+                // res += self.step_constraint_eval_multiplication(point, &mask)
                 //     * accum.random_coeff_powers[1];
+                res += self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]])
+                    * accum.random_coeff_powers[1];
+
+                println!("res: {:?}", res);
 
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }

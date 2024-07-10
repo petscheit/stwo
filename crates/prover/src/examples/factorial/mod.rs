@@ -78,7 +78,8 @@ impl Factorial {
 mod tests {
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::channel::{BWSSha256Channel, Channel};
-    use crate::core::fields::IntoSlice;
+    use crate::core::circle::Coset;
+    use crate::core::fields::{FieldExpOps, IntoSlice};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::prove;
@@ -112,12 +113,45 @@ mod tests {
     }
 
     #[test]
-    pub fn test_proving_and_vcerification() {
+    pub fn test_proving_and_veerification() {
         let factorial = super::Factorial::new(8, 4, 40320);
         let proof = factorial.prove();
         assert!(proof.is_ok());
 
         let valid = factorial.verify(proof.unwrap());
         assert!(valid.is_ok());
+    }
+
+    #[test]
+    pub fn test_constraint_switch() {
+        let constraint_zero_domain = Coset::subgroup(3);
+        let g_2 = constraint_zero_domain.at(1);
+        let g_minus_2 = constraint_zero_domain.at(constraint_zero_domain.size() - 2);
+
+        println!("g_2: {:?}", g_2);
+        println!("g_minus_2: {:?}", g_minus_2);
+
+        let res = g_2.y * g_minus_2.y.inverse();
+
+        println!("res: {:?}", res);
+
+        //     // let g_1 = constraint_zero_domain.at(i + 1);
+        for i in 0..constraint_zero_domain.size() {
+            println!("Running: {:?}", i);
+            let g = constraint_zero_domain.at(i);
+            // let g_1 = constraint_zero_domain.at(i + 1);
+            println!("g: {:?}", g);
+
+            // if g.y == M31(0) {
+            //     continue;
+            // }
+            //
+            // let res = g.y * g.y.inverse();
+            // println!("res: {:?}", res);
+            // assert_eq!(res, M31(1));
+            //
+            // let test = g.y * g_1.y.inverse();
+
+        }
     }
 }
