@@ -2,17 +2,17 @@ use std::iter::zip;
 
 use num_traits::One;
 
-use self::air::{FibonacciAir, MultiFibonacciAir};
-use self::component::FibonacciComponent;
+use self::air::{FibonacciAir};
 use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::channel::{BWSSha256Channel, Channel};
-use crate::core::fields::m31::{BaseField, M31};
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
 use crate::core::vcs::bws_sha256_hash::BWSSha256Hasher;
 use crate::core::vcs::hasher::Hasher;
+use crate::examples::fucktorial::component::FactorialComponent;
 
 pub mod air;
 mod component;
@@ -23,7 +23,7 @@ pub struct Fibonacci {
 
 impl Fibonacci {
     pub fn new(log_size: u32, claim: BaseField) -> Self {
-        let component = FibonacciComponent::new(log_size, claim);
+        let component = FactorialComponent::new(log_size, claim);
         Self {
             air: FibonacciAir::new(component),
         }
@@ -35,20 +35,19 @@ impl Fibonacci {
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
         let mut trace = Vec::with_capacity(trace_domain.size());
 
+        println!("trace_domain: {:?}", trace_domain);
+        println!("trace_domain.size(): {:?}", trace_domain.size());
         // Fill trace with fibonacci squared.
         let mut a = BaseField::one();
         let mut b = BaseField::one();
         for _ in 0..trace_domain.size() {
+            println!("a: {:?}, b: {:?}", a, b);
             trace.push(a);
             let tmp = a.square() + b.square();
+            println!("a^2 + a^2: {:?}", tmp);
             a = b;
             b = tmp;
         }
-
-        // println!("trace: {:?}", trace);
-
-        // let trace = vec![M31(1), M31(1), M31(2), M31(3), M31(5), M31(8), M31(13), M31(21)];
-        let trace = vec![M31(1), M31(56), M31(1), M31(56), M31(1), M31(56), M31(1), M31(56)];
 
         // Returns as a CircleEvaluation.
         CircleEvaluation::new_canonical_ordered(trace_domain, trace)
@@ -74,46 +73,6 @@ impl Fibonacci {
     }
 }
 
-pub struct MultiFibonacci {
-    pub air: MultiFibonacciAir,
-    log_sizes: Vec<u32>,
-    claims: Vec<BaseField>,
-}
-
-impl MultiFibonacci {
-    pub fn new(log_sizes: Vec<u32>, claims: Vec<BaseField>) -> Self {
-        assert!(!log_sizes.is_empty());
-        assert_eq!(log_sizes.len(), claims.len());
-        let air = MultiFibonacciAir::new(&log_sizes, &claims);
-        Self {
-            air,
-            log_sizes,
-            claims,
-        }
-    }
-
-    pub fn get_trace(&self) -> Vec<CpuCircleEvaluation<BaseField, BitReversedOrder>> {
-        zip(&self.log_sizes, &self.claims)
-            .map(|(log_size, claim)| {
-                let fib = Fibonacci::new(*log_size, *claim);
-                fib.get_trace()
-            })
-            .collect()
-    }
-
-    pub fn prove(&self) -> Result<StarkProof, ProvingError> {
-        let channel =
-            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&self.claims)));
-        prove(&self.air, channel, self.get_trace())
-    }
-
-    pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
-        let channel =
-            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&self.claims)));
-        verify(proof, &self.air, channel)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::assert_matches::assert_matches;
@@ -124,21 +83,53 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use super::{Fibonacci, MultiFibonacci};
+    use super::{Fibonacci};
     use crate::core::air::accumulation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, AirProverExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{VerificationError};
+    use crate::core::prover::{prove, VerificationError};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::{m31, qm31};
+    use crate::core::backend::cpu::CpuCircleEvaluation;
+    use crate::core::channel::{BWSSha256Channel, Channel};
+    use crate::core::fields::IntoSlice;
+    use crate::core::vcs::bws_sha256_hash::BWSSha256Hasher;
+    use crate::core::vcs::hasher::Hasher;
+    use crate::examples::factorial::air::FactorialAir;
+    use crate::examples::fucktorial::component::FactorialComponent;
+
+    #[test]
+    pub fn test_constraints() {
+        let traces = vec![
+            (vec![M31(4), M31(1), M31(3), M31(4), M31(2), M31(12), M31(1), M31(24)], true),
+            (vec![M31(3), M31(1), M31(3), M31(4), M31(2), M31(12), M31(1), M31(24)], false),
+            (vec![M31(3), M31(1), M31(3), M31(4), M31(2), M31(12), M31(2), M31(24)], false),
+            (vec![M31(3), M31(1), M31(3), M31(4), M31(2), M31(12), M31(1), M31(23)], false),
+            (vec![M31(4), M31(0), M31(3), M31(4), M31(2), M31(12), M31(1), M31(24)], false),
+            (vec![M31(4), M31(1), M31(3), M31(3), M31(2), M31(12), M31(1), M31(24)], false),
+            (vec![M31(4), M31(1), M31(3), M31(4), M31(2), M31(11), M31(1), M31(24)], false),
+            (vec![M31(4), M31(1), M31(1), M31(4), M31(2), M31(12), M31(1), M31(24)], false),
+            (vec![M31(4), M31(1), M31(4), M31(4), M31(3), M31(16), M31(2), M31(48)], false),
+        ];
+
+        for (trace, valid) in traces {
+            println!("Running: {:?}", trace);
+            let trace_conv = CpuCircleEvaluation::new_canonical_ordered(CanonicCoset::new(3), trace);
+
+            let channel =
+            &mut BWSSha256Channel::new(BWSSha256Hasher::hash(BaseField::into_slice(&[BaseField::from(24)])));
+            let proof = prove(&FactorialAir::new(FactorialComponent::new(4, 3, 24)), channel, vec![trace_conv]);
+            assert_eq!(proof.is_ok(), valid);
+        }
+    }
 
     #[test]
     pub fn test_verify() {
-        let fib = Fibonacci::new(3, m31!(56));
+        let fib = Fibonacci::new(5, m31!(443693538));
         let proof = fib.prove().unwrap();
         // println!("Proof: {:?}", proof);
         assert!(fib.verify(proof).is_ok());

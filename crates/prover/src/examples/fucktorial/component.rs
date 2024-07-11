@@ -24,21 +24,18 @@ pub struct FactorialComponent {
 }
 
 impl FactorialComponent {
-      pub fn new(n: u32, log_size: u32, claim: u32) -> Self {
+    pub fn new(n: u32, log_size: u32, claim: u32) -> Self {
         Self { n, log_size, claim: BaseField::from(claim) }
-            }
-
-    /// Evaluates the step constraint quotient polynomial on a single point.
-    /// The step constraint is defined as:
-    ///   mask[0]^2 + mask[1]^2 - mask[2]
-    ///
-    pub fn step_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
+    }
+    pub fn step_constraint_eval_multiplication<F: ExtensionOf<BaseField>>(
         &self,
         point: CirclePoint<F>,
         mask: &[F; 4],
     ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size - 1);
-        let constraint_value = (mask[0] - mask[2]) + F::from(BaseField::from(1782)) * (mask[1] - mask[3]);
+        // Unsafe, but the idea is to scope the different evaluations, so they dont cancel each other out.
+        let super_safe_random_value: F = BaseField::from(23481234).into();
+        let constraint_value = mask[0] * mask[1] - mask[3] + (mask[0] - mask[2] - BaseField::one()) * super_safe_random_value;
         let selector = point_excluder(
             constraint_zero_domain
                 .at(constraint_zero_domain.size() - 1)
@@ -50,27 +47,28 @@ impl FactorialComponent {
         num / denom
     }
 
-    /// Evaluates the boundary constraint quotient polynomial on a single point.
-    pub fn boundary_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
+     pub fn boundary_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
         &self,
         point: CirclePoint<F>,
         mask: &[F; 1],
     ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
-        let p = constraint_zero_domain.at(constraint_zero_domain.size() - 1);
-        // On (1,0), we should get 1.
-        // On p, we should get self.claim.
-        // 1 + y * (self.claim - 1) * p.y^-1
-        // TODO(spapini): Cache the constant.
-        let linear = F::one() + point.y * (self.claim - BaseField::one()) * p.y.inverse();
+        let g_minus_1 = constraint_zero_domain.at(constraint_zero_domain.size() - 1).into_ef();
+        let g_2 = constraint_zero_domain.at(2).into_ef();
 
+        // On g1, we should get 1.
+        // On g_minus_2 we should get 1
+        let linear = ((point + g_minus_1).x - BaseField::from(1)) * ((point + g_2).x - BaseField::from(1)) + F::one();
         let num = mask[0] - linear;
-        let denom = pair_vanishing(p.into_ef(), CirclePoint::zero(), point);
+
+        let g_1 = constraint_zero_domain.at(1).into_ef();
+        let g_minus_2 = constraint_zero_domain.at(constraint_zero_domain.size() - 2).into_ef();
+        let denom = pair_vanishing(g_minus_2, g_1, point);
         num / denom
     }
 }
 
-impl Component for FibonacciComponent {
+impl Component for FactorialComponent {
     fn n_constraints(&self) -> usize {
         2
     }
@@ -117,7 +115,7 @@ impl Component for FibonacciComponent {
     }
 }
 
-impl ComponentTraceWriter<CpuBackend> for FibonacciComponent {
+impl ComponentTraceWriter<CpuBackend> for FactorialComponent {
     fn write_interaction_trace(
         &self,
         _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
@@ -127,7 +125,7 @@ impl ComponentTraceWriter<CpuBackend> for FibonacciComponent {
     }
 }
 
-impl ComponentProver<CpuBackend> for FibonacciComponent {
+impl ComponentProver<CpuBackend> for FactorialComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, CpuBackend>,
@@ -154,9 +152,9 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
             let mul = trace_domain.step_size().div(point_coset.step_size);
             for (i, point) in point_coset.iter().enumerate() {
                 let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul], eval[i as isize + 3 * mul]];
-                let mut res = self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]])
+                let mut res = self.step_constraint_eval_multiplication(point, &mask)
                     * accum.random_coeff_powers[0];
-                res += self.step_constraint_eval_quotient_by_mask(point, &mask)
+                res += self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]])
                     * accum.random_coeff_powers[1];
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
